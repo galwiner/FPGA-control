@@ -1,0 +1,34 @@
+function [Nbar,Omega,y]=fitNbar2CarrierRabi(T,Pup,Faxial,BeamAngle)
+%calc Rabi flopping with thermal state distribution
+% t [S]
+
+h_bar=1.05e-34;     %[J*s]
+k_674=2*pi/674e-9;   %[1/m]
+m_Sr=88*1.6e-27;        %[Kg]
+omega0=2*pi*1e6*Faxial; %[rad/S]
+eta=k_674*cos(BeamAngle)*sqrt(h_bar/2/m_Sr/omega0);
+
+Ymodel=@(par,t)... 
+    1/2*(1- (cos(2*par(1).*(t-par(3)))+2*par(1).*t.*(eta^2.*par(2)).*sin(2*par(1)*(t-par(3))))...
+    ./(1+(2*par(1)*t*(eta^2.*par(2))).^2));
+
+options=optimset('Display','off');
+%[~, mind]=max(Pup); Omega0=pi/2/T(mind); old code work less good
+% new code: performa Fourier to find initial guess for Omega0
+L=length(T);
+Ts = T(2)-T(1);% Sample time
+Fs = 1/Ts; % Sampling frequency
+NFFT = 2^nextpow2(L); % Next power of 2 from length of y
+Y = fft(Pup-mean(Pup),NFFT)/L;
+f = Fs/2*linspace(0,1,NFFT/2+1);
+positivePSD=2*abs(Y(1:NFFT/2+1));
+[~,mind]=max(positivePSD);
+Omega0=pi*f(mind);
+
+% now fit
+[fitpar]=lsqcurvefit(Ymodel,[Omega0 20 0],T,Pup,[1e3 1 -2e-6],[2e6 300 5e-6],options);
+
+Omega=fitpar(1);
+Nbar=fitpar(2);
+y=Ymodel(fitpar,T);
+end

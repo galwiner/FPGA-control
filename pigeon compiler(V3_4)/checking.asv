@@ -1,0 +1,43 @@
+% program fluorescence logger
+clear all;
+
+cooling=Pulse('OffRes422',10,1000);
+detection=Pulse('OnRes422',1100,500);
+photoncount=Pulse('PhotonCount',1100,500);
+rap=Pulse('RAP408',1010,10,'freq',111);
+ending=Pulse('OffRes422',1700,0);
+
+% seq1=[cooling Pulse('OnRes422',1000,0) ]; 
+% seq2=[Pulse('OnRes422',0,-1) Pulse('OffRes422',0,0)];
+
+prog=CodeGenerator;
+prog.GenSeq([cooling  detection photoncount]);
+% prog.GenSeq(seq1);
+% prog.GenPhotonTimes(500);
+% prog.GenSeq(seq2);
+prog.GenFinish;
+prog.DisplayCode;
+%disp(prog.code);
+
+% FPGA/Host control
+ com=Tcp2Labview('132.77.40.77',6340);
+ pause(1);
+ n=com.UploadCode(prog);
+ com.UpdateFpga;
+ com.WaitForHostIdle;
+ 
+ y=[];
+ tic;
+ for i=1:1
+    rep=15;
+    com.Execute(rep);
+    com.WaitForHostIdle;
+    r=com.ReadOut(rep);
+    %disp(r);
+    %y=[y r'];
+end
+disp(toc)
+com.Delete; 
+% figure(1);
+% y1=y(find(y));
+% hist(y1,1:100:3000);

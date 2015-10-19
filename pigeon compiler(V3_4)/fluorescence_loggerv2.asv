@@ -1,0 +1,30 @@
+% program fluorescence logger
+clear all;
+
+cooling1=Pulse('OffRes422',1,2000);
+raman=Pulse(3,2001,5900);
+
+detection=Pulse('OnRes422',8000,2000);
+photoncount=Pulse('PhotonCount',8000,2000);
+%cooling2=Pulse('OffRes422',7000,3000);
+% setting the AOM freq with a "only off pulse"
+% init=[ Pulse(2,0,-1,'freq',220)...
+%      Pulse(3,0,-1,'freq',60) ];        
+ending=Pulse(1,10000,0);
+
+seq=[ cooling1 raman detection photoncount ending]; 
+
+prog=CodeGenerator;
+prog.GenSeq(seq);
+prog.GenFinish;
+prog.DisplayCode;
+
+% FPGA/Host control
+com=Tcp2Labview('localhost',6340);
+pause(1);
+n=com.UploadCode(prog);
+com.UpdateFpga;
+com.WaitForHostIdle;
+com.Execute(1);  
+com.Delete;
+

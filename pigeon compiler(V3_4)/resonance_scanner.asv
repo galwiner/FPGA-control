@@ -1,0 +1,191 @@
+function resonance_scanner
+clear all;
+close all;  
+% Open connection to FPGA host (by TCP\IP protocol)
+com=Tcp2Labview('localhost',6340);
+%% ------------- building the GUI
+    fig=figure('Position',[200,200,800,600],'CloseRequestFcn',@figclose_callback);	
+    annotation(fig,'textbox','Units','pixels',...
+            'Position',[300 550  270 40],...
+            'String',{'Resonance Scanner'},...
+            'FontWeight','demi',...
+            'FontSize',14,...
+            'FontName','Arial',...
+            'Color',[0.07843 0.1686 0.549],...
+            'LineStyle','none',...
+            'FitBoxToText','off');
+    %------------scan panel-----------------------
+    h_panel = uipanel(fig,'Units','pixels',...
+            'Position',[300   400   450   130],...
+            'FontSize',12,...
+            'Title','One dimension scan parameters:');
+    vstart=NumControl(h_panel,10,10,'From :');
+    vend=NumControl(h_panel,110,10,' To');    
+    steps=NumControl(h_panel,210,10,'Steps');   
+    h_pop = uicontrol('Parent',h_panel,'Style', 'popup',...
+           'String',' 422 AOM | 1092 AOM',...
+           'Position', [170 70 100 30],...
+           'BackGroundColor', [1 1 1]);
+    uicontrol(h_panel,'Style','text',...
+           'Position',[10 80 150 20],...
+           'FontSize',11,...
+           'String','Channel to scan :');
+    h_scan = uicontrol(h_panel,'style','togglebutton',...
+           'Position',[330 80 100 30],...
+           'String','Run Scan',...
+           'FontSize',11,'FontWeight','demi',...         
+           'Callback',@runscan_callback);
+    % ---------------Static values panel-----------
+    h_static = uipanel(fig,'Units','pixels',...
+            'Position',[30   310   230   220],...
+            'FontSize',12,...
+            'Title','Static values setting');
+    init422=NumControl(h_static,10,130,'422');
+    init1092=NumControl(h_static,10,70,'1092');
+    rep=NumControl(h_static,10,10,'Repeat each');
+    h_run = uicontrol(h_static,'style','togglebutton',...
+           'Position',[120 80 70 30],...
+           'String','Run',...
+           'FontSize',11,'FontWeight','demi',...         
+           'Callback',@run_callback);
+    h_singelseq = uicontrol(h_static,'style','radiobutton',...
+           'Position',[120 50 100 30],...
+           'String','Single Seq',...
+           'FontSize',10);  
+    h_keep_onres_on = uicontrol(h_static,'style','radiobutton',...
+           'Position',[120 20 100 30],...
+           'String','keep 422res on',...
+           'FontSize',10);         
+
+    %----------------- plotting axes --------------
+    h_axis=axes('Parent',fig,'units','pixels','Position',[350 50 400 250],...
+            'NextPlot','add','ButtonDownFcn',@axes_callback);
+    axis(h_axis,[-100 100 0 20]); 
+    grid(h_axis);
+    xlabel(h_axis,'Frequency[MHz]');
+    ylabel(h_axis,'Photon Count');
+    title(h_axis,'Resonance Spectrum');
+    
+    h_clear_axes = uicontrol('Parent',fig,'style','pushbutton',...
+           'Position',[350 310 60 25],...
+           'String','clear',...
+           'FontSize',11,'FontWeight','demi',...         
+           'Callback',@clear_axes_callback);
+    
+    h_hist=axes('Parent',fig,'units','pixels','Position',[50 50 200 150]);
+    axis(h_hist,[0 20 0 100]);
+    xlabel(h_hist,'photons');
+    ylabel(h_hist,'Counts');
+    title(h_hist,'Photon Count Histogram');
+    
+    h_photon_avg=uicontrol(fig,'Style','text',...
+           'Position',[100 230 100 20],...
+           'FontSize',13,...
+           'FontName','Arial');
+    annotation(fig,'textbox','Units','pixels',...
+            'Position',[50 250 150 30],...
+            'String','Photons average:',...
+            'FontSize',12,...
+            'FontName','Arial',...
+            'LineStyle','none');
+       
+
+    
+%% ------------- CallBack Functions 
+    function figclose_callback(hObject,eventdata)
+        disp('closing figure');
+        com.Delete;
+        delete(hObject);
+    end
+
+    function clear_axes_callback(hObject,eventdata)
+       disp('clear figure');
+       cla(h_axis);
+       
+    end
+
+    function axes_callback(hObject,eventdata)
+       
+       mp=get(h_axis,'CurrentPoint');
+       init422.SetValue(mp(1,1));
+    end
+
+    function runscan_callback(hObject,eventdata)
+       button_state = get(hObject,'Value');
+       if (button_state == get(hObject,'Max'))	
+          set(hObject,'String','Running')
+          % main program 
+          f=linspace(vstart.N,vend.N,steps.N);
+          switch get(h_pop,'Value');
+              case 1
+                  for i=1:steps.N
+                      single_run(f(i),init1092.N);
+                      pause(0.1);
+                  end
+          end
+          set(hObject,'value',get(hObject,'Min'));
+          set(hObject,'String','Run Scan')
+       end
+    end
+
+    function run_callback(hObject,eventdata)
+       button_state = get(hObject,'Value');
+       if (button_state == get(hObject,'Max'))
+           if (get(h_singelseq,'value')==get(h_singelseq,'Min'))
+              set(hObject,'String','Stop')
+              while get(hObject,'Value')==get(hObject,'Max')
+                % run experiment
+                single_run(init422.N,init1092.N);
+                pause(0.1);
+              end
+              set(hObject,'String','Run')
+           else 
+              % run experiment
+              single_run(init422.N,init1092.N);
+              set(hObject,'value',get(hObject,'Min'));
+           end
+       end
+    end
+%% ------------- main scan loop function --------------;
+    function r=single_run(f422,f1092)
+       
+        cooling=Pulse('OffRes422',10,1000);
+        detection=Pulse('OnRes422',1100,500);
+        photoncount=Pulse('PhotonCount',1100,500);
+        % setting the AOM freq with a "only off pulse"
+        init=[ Pulse(2,0,-1,'freq',f422)...
+               Pulse(3,0,-1,'freq',f1092) ];
+        
+        % set the cooling back on with "only on pulse"
+        if (get(h_singelseq,'value')==get(h_singelseq,'Min'))
+        ending=Pulse(1,1700,0);
+        
+        seq=[init cooling detection photoncount ending]; 
+
+        prog=CodeGenerator;
+        prog.GenSeq(seq);
+        prog.GenFinish;
+        %prog.DisplayCode;
+
+        % FPGA/Host control
+        n=com.UploadCode(prog);
+        com.UpdateFpga;
+        com.WaitForHostIdle;
+        com.Execute(rep.N)
+        r=com.ReadOut(rep.N*prog.numofreadout);
+       %r=round(randn(1,rep.N)*20);
+        hist(h_hist,r,0:2:40);
+        axis(h_hist,[0 40 0 100]);
+        xlabel(h_hist,'photons');
+        ylabel(h_hist,'Counts');
+        title(h_hist,'Photon Count Histogram');
+        r_mean=mean(r);
+        set(h_photon_avg,'String',num2str(r_mean));
+       
+        plot(h_axis,f422,r_mean,'o');
+        %hold(h_axis,'off');
+
+    end
+    
+end
+

@@ -1,0 +1,128 @@
+function SideBandGSC(Vmodes)
+
+dic=Dictator.me;
+
+if ~exist('Vmodes')
+    Vmodes = 2;
+end
+% Vmodes=[1 2];
+
+   
+%-------------- Set GUI figurdes ---------------------
+InitializeAxes (dic.GUI.sca(1),'Photons #','Cases Counted #','Fluorescence Histogram',...
+                [0 dic.maxPhotonsNumPerReadout],[],0);
+
+darkCountLine =InitializeAxes (dic.GUI.sca(6),...
+    'F [MHz]','Dark Counts %','Blue Sideband',...
+    [],[0 100],3);
+set(darkCountLine(1),'Marker','.','MarkerSize',10,'Color','b');
+set(darkCountLine(2),'Marker','.','MarkerSize',10,'Color','r');
+set(darkCountLine(3),'Color','k');
+
+%-------------- main scan loop ---------------------
+f674Span=-0.04:0.004:0.04;    
+f674Span=-0.08:0.005:0.08;    
+set(dic.GUI.sca(5),'XLim',[f674Span(1) f674Span(end)]);
+
+darkBank =zeros(length(Vmodes),2,length(f674Span));
+dark=zeros(size(f674Span));
+for modeInd=1:length(Vmodes)
+    set(darkCountLine(1),'XData',[],'YData',[]);
+    set(darkCountLine(2),'XData',[],'YData',[]);
+    set(darkCountLine(3),'XData',[],'YData',[]);
+    %titlePrefix = dic.vibMode(Vmodes(modeInd)).name;
+    
+    set(dic.GUI.sca(6),'XLim',[f674Span(1) f674Span(end)]);
+    
+    grid on;
+    for index1 = 1:length(f674Span)
+        for lobeIndex = 1:2
+            if dic.stop
+                return
+            end
+            dic.setNovatech('DoublePass','freq',dic.updateF674);
+            r=experimentSequence(Vmodes(modeInd),lobeIndex*2-3,f674Span(index1));
+            dic.GUI.sca(1); %get an axis from Dictator GUI to show data
+            hist(r,0:1:(1.8*dic.maxPhotonsNumPerReadout));
+            ivec=dic.IonThresholds;
+            tmpdark=0;
+            for tmp=1:dic.NumOfIons
+                tmpdark=tmpdark+sum((r>ivec(tmp))&(r<ivec(tmp+1)))*tmp;
+            end
+            tmpdark=100-tmpdark/length(r)/(dic.NumOfIons)*100;
+            dark(index1)=tmpdark;
+            AddLinePoint(darkCountLine(lobeIndex),f674Span(index1),dark(index1));
+            darkBank(modeInd,lobeIndex,index1)=dark(index1);
+            pause(0.1);
+        end
+    end
+    % fitting 
+    [peakValue,x0,w,bias,xInterpulated,fittedCurve,isValidFit]= ...
+            FitToBiasedSincSquared(f674Span',reshape(darkBank(modeInd,1,:),1,[])');
+    if ~isValidFit
+        error('Invalid fit, scan aborted');
+    else
+        disp(x0);
+        dic.vibMode(Vmodes(modeInd)).freq=round(1e6*(dic.vibMode(Vmodes(modeInd)).freq-x0))*1e-6;
+        set(darkCountLine(3),'XData',xInterpulated,'YData',fittedCurve);
+    end
+
+end
+%------------ Save data ------------------
+showData='figure;RSB(:,:)=darkBank(:,2,:);BSB(:,:)=darkBank(:,1,:);plot(f674Span,RSB,''r'',f674Span,BSB,''b'');;xlabel(''Detunning [Mhz]'');ylabel(''dark[%]'');';
+dic.save;
+
+%--------------------------------------------------------------------
+    function r=experimentSequence(mode,sb,freqdet)
+        prog=CodeGenerator;
+        prog.GenDDSPullParametersFromBase;
+        prog.GenSeq(Pulse('ExperimentTrigger',0,50));
+        prog.GenSeq(Pulse('674DDS1Switch',0,-1,'amp',100));
+        % Doppler coolng
+        prog.GenSeq(Pulse('OffRes422',0,1));%turn off cooling
+        prog.GenSeq(Pulse('OnResCooling',0,dic.Tcooling));
+              
+         % continuous GSC
+        SeqGSC=[]; N=1; Tstart=2;
+        Mode2Cool=mode;
+        if (~isempty(Mode2Cool))
+            for mode=Vmodes
+                % turn on carrier mode
+                SeqGSC=[SeqGSC,Pulse('NoiseEater674',Tstart,dic.vibMode(mode).coolingTime/N),...
+                               Pulse('674DoublePass',Tstart,dic.vibMode(mode).coolingTime/N),... 
+                               Pulse('674DDS1Switch',Tstart,dic.vibMode(mode).coolingTime/N,...
+                                     'freq',dic.SinglePass674freq+dic.vibMode(mode).freq+dic.acStarkShift674)];
+                Tstart=2+Tstart+dic.vibMode(mode).coolingTime/N;
+            end
+            prog.GenSeq([Pulse('Repump1033',0,0), Pulse('OpticalPumping',0,0)]);
+            prog.GenRepeatSeq(SeqGSC,N);
+            prog.GenSeq([Pulse('Repump1033',dic.T1033,-1), Pulse('OpticalPumping',dic.T1033,-1)]);
+            % pulsed GSC
+%             for mode=fliplr(Vmodes)
+%             prog.GenRepeatSeq([Pulse('NoiseEater674',2,dic.vibMode(mode).coldPiTime),...
+%                                Pulse('674DoublePass',2,dic.vibMode(mode).coldPiTime),... 
+%                                Pulse('674DDS1Switch',2,dic.vibMode(mode).coldPiTime,'freq',dic.SinglePass674freq+dic.vibMode(mode).freq),...
+%                                Pulse('Repump1033',dic.vibMode(mode).coldPiTime,dic.T1033),...
+%                                Pulse('OpticalPumping',dic.vibMode(mode).coldPiTime+dic.T1033,dic.Toptpump)],2);                          
+%             end
+        end         
+        % sideband Shelving
+        prog.GenSeq([Pulse('674DoublePass',1,dic.vibMode(Mode2Cool).coldPiTime+2),...
+                     Pulse('674DDS1Switch',2,dic.vibMode(Mode2Cool).coldPiTime,'freq',dic.SinglePass674freq+sb*dic.vibMode(Mode2Cool).freq+freqdet)]);
+        % detection
+        prog.GenSeq([Pulse('OnRes422',0,dic.TDetection) Pulse('PhotonCount',0,dic.TDetection)]);
+        %resume cooling
+        prog.GenSeq(Pulse('Repump1033',0,dic.T1033));
+        prog.GenSeq(Pulse('OffRes422',0,0));
+        prog.GenFinish;
+        
+        dic.com.UploadCode(prog);
+        dic.com.UpdateFpga;
+        dic.com.WaitForHostIdle; % wait until host finished it last task
+        dic.com.Execute(100);
+        dic.com.WaitForHostIdle;
+        r = dic.com.ReadOut(100);
+        r = r(2:end);
+    end 
+
+end

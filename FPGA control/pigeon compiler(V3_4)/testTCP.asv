@@ -1,0 +1,19 @@
+% tesp TCPIP
+com=Tcp2Labview('localhost',6341);
+%write
+clear times;
+pause(1);
+for i=1:100
+    tic;
+    a=int16(rand(1,i)*1000);
+    fwrite(com.TcpID,int8(0),'int8');
+    fwrite(com.TcpID,int16([1000 i a]),'int16');
+    %read
+    fwrite(com.TcpID,int8(1),'int8');
+    fwrite(com.TcpID,int16([1000 i ]),'int16');
+    r=fread(com.TcpID,i,'int16');
+    %com.WaitForHostIdle;
+    times(i)=toc;
+end
+plot(times);
+com.Delete;

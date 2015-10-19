@@ -1,0 +1,53 @@
+function DrawULETrace
+dic=Dictator.me;
+t = dic.ULE.timeHistory;
+if dic.deflectorCompenFlag
+    f = -2*dic.ULE.deflectorFreqHistory+dic.switchSetFreq;
+else
+    f = dic.ULE.freqHistory-2*dic.deflectorCurrentFreq;
+end
+if (length(f)~=length(t))
+    error('Time and frequency vectors does not match')
+else
+    if length(f)>2
+        estimation = zeros(size(f));
+        estimation(1:2) = f(1:2);
+        a = diff(f)./diff(t);
+        b = f(2:end)-a.*t(2:end);
+        estimation(3:end) = a(1:end-1).*t(3:end) + b(1:end-1);
+        lastSlope = a(end)*1e3/24/60;
+        deltaMiss = (estimation(end)-f(end))*1e6;
+
+        if (t(end)-t(1))>datenum([0 0 0 1 0 0])
+            timeLim = (t(end)-t(1)-[datenum([0 0 0 1 0 0]) 0])*24*60;
+        else
+            timeLim = [0 (t(end)-t(1))*24*60];
+        end
+        inFramIndecies = find(t>=min(timeLim(1)/24/60+t(1)));
+        fvec=f(inFramIndecies); 
+        mfvec=mean(fvec);       
+        estLineData = reshape([estimation(inFramIndecies); fvec],1,[]);
+        estLineTime = reshape([t(inFramIndecies); t(inFramIndecies)],1,[]);
+        titleString = strcat({datestr(t(end),13)}...
+            ,{' '},{'\partialf/\partialt='},{num2str(lastSlope,2)},{'kHz/min'},...
+            {' '},{'\Deltaf_{miss}='},{num2str(round(deltaMiss))},{'Hz'});
+
+        lines = InitializeAxes (dic.GUI.sca(8),'Time [min]','f_{ULE}[kHz]',titleString,...
+            [],[min(fvec) max(fvec)]-mfvec,2);
+        set(lines(1),'XData',24*60*(estLineTime-estLineTime(end)),...
+            'YData',(estLineData-mfvec)*1e3,'Color',[1 0 0],'LineStyle','-.')
+        set(lines(2),'XData',24*60*(t(inFramIndecies)-t(end)),...
+            'YData',(fvec-mfvec)*1e3,'Color',[0 0 1],'LineStyle','-','Marker','.')
+
+%         lines = InitializeAxes (dic.GUI.sca(8),'Time [min]','f_{ULE}[kHz]',titleString,...
+%             timeLim,[fMean-0.95*fSpan fMean+0.95*fSpan],2);
+%         set(lines(1),'XData',24*60*(estLineTime-estLineTime(1)),...
+%             'YData',(estLineData-meanF)*1e3,'Color',[1 0 0],'LineStyle','-.')
+%         set(lines(2),'XData',24*60*(t-t(1)),...
+%             'YData',(f-meanF)*1e3,'Color',[0 0 1],'LineStyle','-','Marker','.')
+    else
+        disp('Not enough measurements for display');
+        InitializeAxes (dic.GUI.sca(8),'Time [min]','f_{ULE}[kHz]','',...
+            [],[],0);
+   end
+end

@@ -1,0 +1,41 @@
+% testing class Pulse Sequence  
+clear all;  
+%% ---------------  Define Pulses --------------------------
+% syntax objname=Pulse('ChannelName',start time,duration);
+cooling=Pulse(1,10,100);
+detection=Pulse(2,1010,100);
+photoncount=Pulse(5,1010,100);
+
+%% ---------------  Define Sequences --------------------------
+%Define Sequences
+init=[ Pulse(1,0,-1) Pulse(2,0,-1) Pulse(5,0,-1)];
+seq=[cooling cooling.Shift(200) Pulse(1,600,-1) detection photoncount ]; 
+
+figure(1);
+cooling.PlotTimeLine(cooling.Sequence2TimeLine(seq));
+
+%% ------------------ Compiling -------------------------------
+prog=CodeGenerator;
+prog.GenSeq(seq);
+prog.GenFinish;
+prog.DisplayCode;
+
+%% ------------------FPGA/Host control-------------------------------
+% % Open connection to FPGA host (by TCP\IP protocol)
+% com=Tcp2Labview('localhost',6340);
+% % upload code to the host
+% n=com.UploadCode(prog);
+% % order the host to download the code to FPGA  
+% com.UpdateFpga;
+% % wait for the host to be read for the next task
+% com.WaitForHostIdle;
+% % order the host to run the FPGA processor
+% com.Execute(2)
+% % read the result from the host shared memory
+% A=com.ReadOut(2*prog.numofreadout);
+% disp('Experiments result :');
+% disp(A);
+% 
+% com.Delete; %  close connections
+
+
