@@ -29,9 +29,16 @@ end
 
 %--------------------------------------------------------
 if size(varargin,2)>0
+%     if the varargin structur is such that the first param is numeric., the effect is
+%     1st param is the channel number,
+%     2nd param is the type of info we want to query e.g "ChannelName",
+%     "ChannelType" etc. this is then the return value of the function
     if isnumeric(varargin{1})
         r=info{varargin{1}}.(varargin{2});
     else
+%         if the first input param is not numeric, it is assumed we only have one input param 
+% which is a channel name. this has to match the name of one of the channles in the info structure 
+% the function then retuns the channel number.
         numofchannel=size(info,2);
         num=1;
         while num<=numofchannel

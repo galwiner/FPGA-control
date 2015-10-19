@@ -55,12 +55,19 @@ classdef CodeGenerator < handle
             % timeline structure [ time channel action parameter]
             timeline=Pulse.Sequence2TimeLine(arrayofpulses);
             numoflines=size(timeline,1);
+            
+            %lasteventtime keeps track of the last event that occured. if
+            %we pass a single positive integer after arrayofpulses, this is set to
+            %the time in the past (negative) when the last event occured.
+            %if we don't lasteventtime simply gets set to 0.
             if (size(varargin,2)==1)
-                lasteventtime=-varargin{1};
+                
+                lasteventtime=-varargin{1}; 
             else
                 lasteventtime=0;
             end
-            %the main stage that compile the timeline to FPGA code
+            
+            %the main stage that compiles the timeline to FPGA code
             for i=1:numoflines
                 % insert wait until new event
                 GenPause(obj,(timeline(i,1)-lasteventtime)/40);
@@ -74,6 +81,12 @@ classdef CodeGenerator < handle
                         % set digital channel to on
                         switch channeltype
                             case {'VCO','Dig'}
+                                %command 2, subcommand ## is the CPU
+                                %implementation of Digital Output. we then
+                                %pass the OnIs param to this cpu command,
+                                %thus turning the dig channel on. the last
+                                %param is 0 because this command does not
+                                %take further arguments. 
                                 obj.code(obj.currentline,:)=...
                                     [ 2 , PulseChannelInfo(channel,'DigitalSwitch'),PulseChannelInfo(channel,'OnIs'), 0];
                                 obj.currentline=obj.currentline+1;
@@ -100,22 +113,24 @@ classdef CodeGenerator < handle
                                 % Push RegB to FIFO :Command 7 subcommand 1
                                 obj.code(obj.currentline+2,:) = [ 7 , 1 , 0 , 0];
                                 obj.currentline=obj.currentline+3;
-                                obj.numofreadout=obj.numofreadout+1;
+                                obj.numofreadout=obj.numofreadout+1; %what is this variable?
 
                             otherwise
-                                error(' No Switch ON for this ChannelType');
+                                error(' No Switch OFF for this ChannelType'); %this used to say switch ON. i think it was wrong. 19/10/15
                         end
 
                     case 3 % -------------- set frequency ---------------------
                         switch channeltype
                             case 'VCO'
                                 % SetFreqAddress relate to the Analogout channel on
-                                % the fpag that set by the subcommand.
+                                % the fpga that set by the subcommand.
                                 % command is set to 1 that handel analog out
                                 % get the real value that represent the freq
+                                
+                                %GAL: the comment above is gibrish. WTF
 
                                 %freq=parameter;
-                                voltage=eval(PulseChannelInfo(channel,'Freq2Value'));
+                                voltage=eval(PulseChannelInfo(channel,'Freq2Value')); %IF YOU ARE USING EVAL YOU ARE DOING IT WRONG
                                 obj.code(obj.currentline,:)=...
                                     [ 1 , PulseChannelInfo(channel,'SetFreqAddress') , voltage , 0];
                                 obj.currentline=obj.currentline+1;
@@ -145,6 +160,9 @@ classdef CodeGenerator < handle
         end % SegGen
         
         function GenSetAO(obj,ChStr,Var)
+%             this function generates analog output commands in the code
+%             matrix. only analog output chnnels that are implemented in
+%             hardware can be cases in the ChStr switch block. 
             switch ChStr
                 case 'AO0' 
                     obj.code(obj.currentline,:)=[1 0 Var 0];
@@ -158,6 +176,7 @@ classdef CodeGenerator < handle
         end
         
         function GenRegOp(obj,cmdStr,cmdVar1,cmdVar2)
+%             this function is
             if ~exist('cmdVar1')
                 cmdVar1=0;
             end
@@ -230,7 +249,7 @@ classdef CodeGenerator < handle
         end
         
         function GenPauseMemoryBlock(obj)
-             %command 4, subc 10, no pars
+             %command 4, subc 11, no pars
              % generate puase with sleep counter = memoryBlock[RegC]
             obj.code(obj.currentline,:)=[4 11 0 0];
             obj.currentline=obj.currentline+1;      
