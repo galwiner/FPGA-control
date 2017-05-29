@@ -1,0 +1,57 @@
+function Resonance_Scan_GUI
+%function to calculate and plot excitation spectrum of a Srontium ion 
+clear all;
+
+
+alpha = 90/180*pi;    % angle between polarization
+beta = 90/180*pi;     % angle between polarization
+g1=20;                % P->S decay rate MHz
+g2=1.5;               % P->D decay rate MHz
+
+
+fh = figure('Position',[200 200 800 600 ]);
+
+hb1 = uicontrol('Parent',fh,'style','radiobutton',...
+                'Position',[30 50 60 30],'String','fix axis');
+
+hb_all = uicontrol('Parent',fh,'style','radiobutton',...
+                   'Position',[30 80 60 30],'String','plot all');
+                       
+hslider=uicontrol('Parent',fh,'Style', 'slider',...
+                  'Position',[30 200 120 20],...
+                  'Callback', @slider);
+
+hpop = uicontrol('Parent',fh,'Style', 'popup',...
+       'String', ['422' '1092'],...
+       'Position', [30 200 120 50],...
+       'BackGroundColor', [1 1 1],...
+       'Callback', @Popup_parameters);
+   
+hplot = axes('Parent',fh,'units','pixels',...
+             'Position',[300 100 450 450]);
+
+hedit = uicontrol('Parent',fh,'Style','Edit','position',[30,300,200,100],'string',Str_parameter...
+                 ,'BackGroundColor', [1 1 1],'max',5,'FontSize',12);
+  
+   %------------------------------------------------
+   function update_plot
+       
+   end
+   %------------------------------------------------
+   function Popup_parameters(hObject,eventdata)
+       p = get(hpop,'Value');
+       set(hslider,'Min',par(p).min);
+       set(hslider,'Max',par(p).max);
+       set(hslider,'Value',par(p).val);
+   
+   end
+
+ 
+   %------------------------------------------------
+   function slider(hObject,eventdata)          
+       p = get(hpop,'Value');
+       par(p).val = get(hslider,'Value');
+       update_plot;
+   end
+
+end

@@ -1,0 +1,303 @@
+function L674TransitionsCalibration(varargin)
+dic=Dictator.me;
+
+
+
+rep=200; %repetitions per point
+pulseAmp=100;
+withNoiseEater=1;
+
+DetuningSpinDown=(-2.802*1/2+1.68*3/2)*(dic.FRF/2.802);
+% DetuningSpinDown=-2*4.9443;
+
+ShelvingLineCalibration=0;
+
+TransitionOnMM=1;
+% if TransitionOnMM
+%     OptimizeRFNull;
+% end
+
+FreqScan=0;TimeScan=1;
+
+novatechAmp1=363;novatechAmp2=1000;
+CrystalCheckPMT;
+LightShift=14.5;
+
+if ShelvingLineCalibration
+    PulseTime=[1:1:20];
+else
+    if TransitionOnMM
+        dic.setNovatech('Echo','freq',dic.SinglePass674freq-dic.MMFreq,'amp',1000);
+        dic.setNovatech('Parity','freq',dic.SinglePass674freq-dic.MMFreq+DetuningSpinDown+LightShift/1000,'amp',1000);      
+        OscName{1}='674Echo';OscName{2}='674Parity';
+        PulseTime=(1:9:240);
+        
+    else
+        dic.setNovatech('Blue','freq',dic.SinglePass674freq,'amp',novatechAmp1);
+        dic.setNovatech('Red','freq',dic.SinglePass674freq+DetuningSpinDown+LightShift/1000,'amp',novatechAmp2);
+        OscName{1}='674Gate';OscName{2}='674Gate';
+        PulseTime=[1:2:50];
+    end
+end
+if FreqScan
+    if TransitionOnMM
+        Frequency=[-0.025:0.002:0.035];
+        PulseTime=dic.HiddingInfo.Tmm1;
+    else
+        Frequency=[-0.05:0.004:0.05];        
+        PulseTime=dic.HiddingInfo.Tcarrier1;
+    end
+else
+    Frequency=0;    
+end
+
+% control the double pass frequency
+dic.setNovatech('DoublePass','freq',dic.updateF674,'amp',1000);
+
+%% -------------------options-------------
+CrystalCheckPMT;
+for i=1:2:size(varargin,2)
+    switch lower(char(varargin(i)))
+        case 'freq'
+            f674List=varargin{i+1};
+        case 'duration'
+            pulseTime=varargin{i+1};
+        case 'amp'
+            pulseAmp=varargin{i+1};
+        case 'save'
+            savedata=varargin{i+1};
+        case 'deflectorguaging'
+            forDeflectorGuaging = varargin{i+1};
+    end; %switch
+end;%for loop
+valid = 0;
+
+%% -------------- Set GUI figures ---------------------
+InitializeAxes (dic.GUI.sca(1),'Photons #','Cases Counted #','Fluorescence Histogram',...
+    [0 dic.maxPhotonsNumPerReadout],[],0);
+if FreqScan
+    lines =InitializeAxes (dic.GUI.sca(9),...
+        'Frequency [MHz]','Dark Counts %','Rabi Scan',...
+        [Frequency(1) Frequency(end)],[0 100],3);
+    grid(dic.GUI.sca(9),'on');
+else
+    lines =InitializeAxes (dic.GUI.sca(4),...
+        'Pulse Time[\mus]','Dark Counts %','Rabi Scan',...
+        [PulseTime(1) PulseTime(end)],[0 100],3);
+    grid(dic.GUI.sca(4),'on');
+end
+set(lines(1),'Marker','.','MarkerSize',10,'Color','b');
+set(lines(2),'Marker','.','MarkerSize',10,'Color','g');
+set(lines(3),'Marker','.','MarkerSize',10,'Color','r');
+
+%% -------------- Main function scan loops ---------------------
+dark = zeros(max(length(Frequency),length(PulseTime)),2);
+fidelity = zeros(max(length(Frequency),length(PulseTime)),2);
+
+histograms=zeros(rep,length(PulseTime));
+
+if ShelvingLineCalibration
+    for index1=1:max(length(Frequency),length(PulseTime))
+    dark = zeros(max(length(Frequency),length(PulseTime)),1);
+            if dic.stop                
+                return;
+            end
+            pause(0.1);
+            % shelving line starts from s=-1/2
+            % third argument is the oscillator, fourth is the spin state            
+            if FreqScan
+                r=experimentSequence(dic.SinglePass674freq+Frequency(index1),PulseTime,pulseAmp,'674DDS1Switch',1);
+            else
+                r=experimentSequence(dic.SinglePass674freq-2*DetuningSpinDown,PulseTime(index1),pulseAmp,'674DDS1Switch',1);
+            end
+            dic.GUI.sca(1);
+            hist(r,1:1:dic.maxPhotonsNumPerReadout);
+            ivec=dic.IonThresholds;
+            tmpdark=0;
+            for tmp=1:dic.NumOfIons
+                tmpdark=tmpdark+sum((r>ivec(tmp))&(r<ivec(tmp+1)))*tmp;
+            end
+            tmpdark=100-tmpdark/length(r)/(dic.NumOfIons)*100;
+            dark(index1)=tmpdark;
+            fidelity(index1)=100-sum( (r>dic.IonThresholds(2))*2+(r<dic.IonThresholds(1))*2)/2/length(r)*100;
+            histograms(:,index1)=r;          
+            if FreqScan
+                AddLinePoint(lines(1),Frequency(index1),dark(index1));
+            else
+                AddLinePoint(lines(1),PulseTime(index1),dark(index1));
+            end
+    end
+            darktofit=dark';
+else    
+    for index2=1:2 %sum on spin states
+        
+        for index1 = 1:max(length(Frequency),length(PulseTime))
+            
+            if FreqScan
+                if TransitionOnMM
+                    dic.setNovatech('Echo','freq',dic.SinglePass674freq-dic.MMFreq+Frequency(index1),'amp',1000);
+                    dic.setNovatech('Parity','freq',dic.SinglePass674freq-dic.MMFreq+DetuningSpinDown+Frequency(index1),'amp',1000);
+                else
+                    dic.setNovatech('Blue','freq',dic.SinglePass674freq+Frequency(index1),'amp',novatechAmp1);
+                    dic.setNovatech('Red','freq',dic.SinglePass674freq+DetuningSpinDown+Frequency(index1),'amp',novatechAmp2);
+                end                
+            end
+                        
+            if dic.stop                
+                return;
+            end
+            pause(0.1);
+            % third argument is the oscillator, fourth is the spin state
+            if FreqScan
+                r=experimentSequence(dic.SinglePass674freq,PulseTime,pulseAmp,OscName{index2},index2-1);
+            else
+                r=experimentSequence(dic.SinglePass674freq,PulseTime(index1),pulseAmp,OscName{index2},index2-1);
+            end
+            dic.GUI.sca(1);
+            hist(r,1:1:dic.maxPhotonsNumPerReadout);
+            ivec=dic.IonThresholds;
+            tmpdark=0;
+            for tmp=1:dic.NumOfIons
+                tmpdark=tmpdark+sum((r>ivec(tmp))&(r<ivec(tmp+1)))*tmp;
+            end
+            tmpdark=100-tmpdark/length(r)/(dic.NumOfIons)*100;
+            dark(index1,index2)=tmpdark;
+            fidelity(index1,index2)=100-sum( (r>dic.IonThresholds(2))*2+(r<dic.IonThresholds(1))*2)/2/length(r)*100;
+
+            histograms(:,index1,index2)=r;
+            if TransitionOnMM
+                result=fidelity;
+            else
+                result=dark;
+            end
+            
+            if FreqScan
+                AddLinePoint(lines(index2),Frequency(index1),result(index1,index2));
+            else
+                AddLinePoint(lines(index2),PulseTime(index1),result(index1,index2));
+            end
+            
+        end
+        darktofit=dark(:,index2)';
+        if TimeScan
+            ft=fittype('a*(sin(pi/2*x/b).^2)');
+            
+            if TransitionOnMM
+                fo=fitoptions('Method','NonlinearLeastSquares','Startpoint',[96,100],'Lower',[92 60],'Upper',[105 PulseTime(end)]);
+                [curve,goodness]=fit(PulseTime',darktofit',ft,fo);
+                set(lines(3),'Color','r','XData',PulseTime,'YData',feval(curve,PulseTime));
+                
+                if index2==1
+                    dic.HiddingInfo.Tmm1=curve.b;
+                    eval(sprintf('dic.HiddingInfo.Tmm1=%2.2f;',curve.b));
+                else
+                    dic.HiddingInfo.Tmm2=curve.b;
+                    eval(sprintf('dic.HiddingInfo.Tmm2=%2.2f;',curve.b));
+                end
+            else
+                fo=fitoptions('Method','NonlinearLeastSquares','Startpoint',[96,30],'Lower',[92 10],'Upper',[105 PulseTime(end)]);
+                [curve,goodness]=fit(PulseTime',darktofit',ft,fo);
+                set(lines(3),'Color','r','XData',PulseTime,'YData',feval(curve,PulseTime));
+                
+                if index2==1
+                    dic.HiddingInfo.Tcarrier1=curve.b;
+                    eval(sprintf('dic.HiddingInfo.Tcarrier1=%2.2f;',curve.b));
+                else
+                    dic.HiddingInfo.Tcarrier2=curve.b;
+                    eval(sprintf('dic.HiddingInfo.Tcarrier2=%2.2f;',curve.b));
+                end
+            end
+        end
+    end
+end   
+    %---------- fitting and updating ---------------------
+    if TimeScan
+        ft=fittype('a*(sin(pi/2*x/b).^2)');
+        
+        pause(1);
+        if ShelvingLineCalibration
+            fo=fitoptions('Method','NonlinearLeastSquares','Startpoint',[96,2*dic.T674],'Lower',[92 5],'Upper',[105 10]);
+            [curve,goodness]=fit(PulseTime',darktofit',ft,fo);
+            set(lines(3),'Color','r','XData',PulseTime,'YData',feval(curve,PulseTime));
+            
+            dic.HiddingInfo.Tshelving=curve.b;
+            eval(sprintf('dic.HiddingInfo.Tshelving=%2.2f;',curve.b));
+        end        
+    end
+    
+    %---------- fitting and updating ---------------------
+    
+    %
+    %     % update T674 if the chi square is small
+    %     if (mean((y*100-dark).^2)<50)&&(updateFit)
+    %         eval(sprintf('dic.AddrInfo.T%s=%.2f;',OscName,2*pi/Omega/4*1e6+0.1));
+    %         fprintf('dic.AddrInfo.T%s=%.2f',OscName,2*pi/Omega/4*1e6+0.1');
+    %         if strcmp(OscName,'674DDS1Switch')
+    %             dic.T674=2*pi/Omega/4*1e6+0.1;% the 0.5 is a correction
+    %             rabi=dic.T674;
+    %             disp(sprintf('average n = %.2f  PiTime = %4.2f [mus]',Nbar,2*pi/Omega/4*1e6+0.1));
+    %         end
+    %     end
+    
+    %------------ Save data ------------------
+    showData='figure;plot(PulseTime,dark);xlabel(''F_674 [Mhz]'');ylabel(''dark[%]'');';
+    dic.save;
+    
+%% ------------------------ experiment sequence -----------------
+    function r=experimentSequence(pFreq,pTime,pAmp,oscname,spinselected)
+        prog=CodeGenerator;
+        prog.GenDDSPullParametersFromBase;
+
+        % set DDS freq and amp
+        prog.GenSeq(Pulse('ExperimentTrigger',0,50));
+        % Doppler coolng
+        prog.GenSeq(Pulse('OffRes422',0,1));%turn off cooling
+        prog.GenSeq(Pulse('OnResCooling',10,dic.Tcooling));
+        
+        prog.GenSeq(Pulse('RFDDS2Switch',2,-1,'freq',dic.FRF,'amp',dic.ampRF));
+        
+        if strcmp(oscname,'674DDS1Switch')
+            prog.GenSeq(Pulse('674DDS1Switch',2,-1,'freq',pFreq,'amp',pAmp)); 
+        end
+        
+        if withNoiseEater
+            %activate noise eater, move it to int hold and repump
+            prog.GenSeq([Pulse('674Echo',0,15),... %Echo is our choice for NE calib
+                Pulse('NoiseEater674',2,10),Pulse('674DoublePass',0,15),...
+                Pulse('Repump1033',15,dic.T1033),...
+                Pulse('OpticalPumping',16+dic.T1033,dic.Toptpump)]);
+        else
+            prog.GenSeq([Pulse('Repump1033',0,dic.T1033),...
+                Pulse('OpticalPumping',1+dic.T1033,dic.Toptpump)]);                
+        end
+%         prog.GenSeq(Pulse('674DDS1Switch',2,-1,'freq',pFreq,'amp',0)); 
+        
+        %Do pi pulse RF $prepare to -1/2
+         if spinselected==1
+            prog.GenSeq(Pulse('RFDDS2Switch',1,dic.TimeRF));
+         end
+        
+        %drive the pi pulse
+        if strcmp(oscname,'674Gate')          
+            prog.GenSeq([Pulse('674Gate',2,pTime),Pulse('674DoublePass',2,pTime)]);
+        else
+            prog.GenSeq([Pulse(oscname,2,pTime),...
+                Pulse('674DoublePass',2,pTime)]);
+        end
+        % detection
+        prog.GenSeq([Pulse('OnRes422',0,dic.TDetection) Pulse('PhotonCount',0,dic.TDetection)]);
+        % resume cooling
+        prog.GenSeq(Pulse('Repump1033',0,dic.T1033));
+
+        prog.GenSeq([Pulse('OffRes422',0,0) Pulse('Repump1092',0,0)]);
+        prog.GenFinish;    
+        dic.com.UploadCode(prog);
+        dic.com.UpdateFpga;
+        dic.com.WaitForHostIdle; % wait until host finished it last task
+        dic.com.Execute(rep);
+        dic.com.WaitForHostIdle;
+        r = dic.com.ReadOut(rep);
+        
+    end
+end
+

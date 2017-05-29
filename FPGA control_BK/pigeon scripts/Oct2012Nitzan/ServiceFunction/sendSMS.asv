@@ -1,0 +1,5 @@
+% send SMS
+disp('Sending SMS lasers alert.');
+system('E:\Matlab\pigeon\pigeon programs\ScansSep10_Nitzan\ServiceFunction\SendSMS.bat');
+disp('Pausing ... Press any key to continue.');
+pause;

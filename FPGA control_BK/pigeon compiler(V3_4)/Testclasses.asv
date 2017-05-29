@@ -1,0 +1,26 @@
+% test new Pule and code generator V3
+clear all;
+tic;
+DDSnum=1;
+prog=CodeGenerator;
+toc
+prog.GenDDSResetPulse;
+prog.GenDDSInitialization(DDSnum,0);
+prog.GenDDSFrequencyWord(DDSnum,1,0.5);
+prog.GenDDSIPower(DDSnum,0);
+prog.GenDDSPushParametersToBase;
+
+prog.GenSeq([Pulse('OffRes422',50,50),...
+             Pulse('674DDS1',55,10,'phase',pi),...
+             Pulse('674DDS1',67,10,'freq',1)]);
+prog.GenFinish;
+disp(toc);
+%prog.DisplayCode;
+% FPGA/Host control
+com=Tcp2Labview('localhost',6340);
+pause(1);
+com.UploadCode(prog);
+com.UpdateFpga;
+com.WaitForHostIdle;
+com.Execute(2);  
+com.Delete;

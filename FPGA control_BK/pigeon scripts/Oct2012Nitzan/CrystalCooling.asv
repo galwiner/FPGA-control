@@ -1,0 +1,34 @@
+function CrystalCooling
+dic=Dictator.me;
+
+r = experimentSeq;
+ 
+%% ------------------------- Experiment sequence ------------------------------------    
+    function experimentSeq(freq)%create and run a single sequence of detection
+        prog=CodeGenerator; 
+        prog.GenSeq(Pulse('ExperimentTrigger',0,50));
+        %set-up detection(also=optical repump), 1092 and on-res cooling freq. 
+        if (freq>0)
+            prog.GenSeq(Pulse('OnRes422',0,-1,'freq',freq));
+        end
+        prog.GenSeq(Pulse('Repump1092',0,0));
+        prog.GenSeq(Pulse('OffRes422',0,100));
+        prog.GenSeq(Pulse('OnResCooling',0,dic.Tcooling));
+        prog.GenSeq([Pulse('OnRes422',100,dic.TDetection) Pulse('PhotonCount',100,dic.TDetection)]);
+        prog.GenSeq(Pulse('Repump1092',0,0));
+        prog.GenSeq(Pulse('OffRes422',500,0));
+        prog.GenFinish;
+        %prog.DisplayCode;
+
+        % FPGA/Host control
+        n=dic.com.UploadCode(prog);
+        dic.com.UpdateFpga;
+        dic.com.WaitForHostIdle;
+        rep=1;
+        dic.com.Execute(rep);
+        dic.com.WaitForHostIdle;
+        r=dic.com.ReadOut(rep);
+    end
+end
+
+
