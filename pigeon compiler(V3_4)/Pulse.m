@@ -39,7 +39,8 @@ properties (Constant = true)
         Phase; 
         setPhase=false;
         Amp;
-        setAmp=false;    
+        setAmp=false; 
+        analog=false;
     end
 % Class methods
     methods
@@ -50,7 +51,7 @@ properties (Constant = true)
         % if width is -1 than the pulse is only an Off at ts
         % if width > 0 than the pulse is on at ts and off at ts+width
         % Tstart and Tend are in clock cycels (25 nS ) so we need to
-        % multiply by 40 to make it all i
+        % multiply by 40 to make it all in microseconds
            obj.Tstart = (ts*40); 
            obj.Tend = (ts*40+width*40);
            if ischar(ch)
@@ -72,7 +73,9 @@ properties (Constant = true)
            end;%for loop      
         end % pulse 
         
-        function P=Shift(obj,t)  
+        function P=Shift(obj,t)
+            %t is the time you want to shift the pulse by, in microseconds.
+            %takes a pulse, returns the exact same pulse, shifted by t.
             P=obj;
             P.Tstart=(obj.Tstart+t*40);
             P.Tend=(obj.Tend+t*40);          
@@ -88,13 +91,13 @@ properties (Constant = true)
             % operation : start=1, stop=2, setfreq=3,setphase=4 and donothing=5.        
             % !! here TIME is in clock cycles !!!
             numofpulses=size(pulses,2);
-            timearray=zeros(numofpulses*4,4);
+            timearray=zeros(numofpulses*4,4); %every pulse takes up 4 rows
             index=1;
             precede=20; %= 0.5 mus ->setting the freq/phase/amp command timing 
             for i=1:numofpulses
-                ts=pulses(i).Tstart;
-                te=pulses(i).Tend;
-                ch=pulses(i).Channel;
+                ts=pulses{i}.Tstart;
+                te=pulses{i}.Tend;
+                ch=pulses{i}.Channel;
                 if (te-ts)==0 
                     % only ON pulse
                     timearray(index,:)=[ts,ch,1,0]; 
@@ -109,21 +112,28 @@ properties (Constant = true)
                     timearray(index+1,:)=[te,ch,2,0];
                     index=index+2;
                 end        
-                if (pulses(i).setFreq)
-                   timearray(index,:)=[ts-precede,ch,3,pulses(i).Freq];
+                if (pulses{i}.setFreq)
+                   timearray(index,:)=[ts-precede,ch,3,pulses{i}.Freq];
                    precede=precede+20;
                    index=index+1; 
                 end
-                if (pulses(i).setAmp)
-                    timearray(index,:)=[ts-precede,ch,5,pulses(i).Amp];
+                if (pulses{i}.setAmp)
+                    timearray(index,:)=[ts-precede,ch,5,pulses{i}.Amp];
                     precede=precede+20;
                     index=index+1;
                 end 
-                 if (pulses(i).setPhase)
-                    timearray(index,:)=[ts-precede,ch,4,pulses(i).Phase];
+                 if (pulses{i}.setPhase)
+                    timearray(index,:)=[ts-precede,ch,4,pulses{i}.Phase];
                     index=index+1;
+                 end    
+                 
+                if (pulses{i}.analog)
+                    timearray(index,:)=[ts,ch,1,pulses{i}.voltage];
+                    timearray(index+1,:)=[te,ch,2,0];
+                    index=index+2;
+                    
                 end                
-                
+%                 
             end
             timearray(index:end,:)=[];
             timearray=sortrows(timearray);     

@@ -3,9 +3,9 @@ classdef CodeGenerator < handle
     %
     %
     %---------------------------------------------------------------
-
+    
     properties(Constant = true)
-
+        
         CommandList =  {'Do nothing'  ,'Analog out'  ,'Digital out',...
             'Photon count','Register'    ,'If'         ,...
             'Goto T/F'    ,'Push to FIFO','End program'};
@@ -18,9 +18,9 @@ classdef CodeGenerator < handle
             'NA','NA','NA','NA','NA','NA','NA','NA','NA','NA','NA','NA','NA';...
             'RegA','RegB','RegC','PhotonPhase','NA','NA','NA','NA','NA','NA','NA','NA','NA';...
             'NA','NA','NA','NA','NA','NA','NA','NA','NA','NA','NA','NA','NA'};
-
+        
     end
-
+    
     properties
         % code has the shared memory structure :
         % [ command(byte) subcommand(byte) par1(int16) par2(int16) ]
@@ -29,24 +29,25 @@ classdef CodeGenerator < handle
         stack;
         numofreadout=0;
         DDSCurrentState;
-%         DDSCurrentState = struct('IntRegMap',[],'IOPortBuffMap',[],...
-%             'LegsValues',[]);
+        %         DDSCurrentState = struct('IntRegMap',[],'IOPortBuffMap',[],...
+        %             'LegsValues',[]);
         DDSBusCurrentAddress = zeros(1,6);
         DDSBusCurrentData = zeros(1,8);
-
+        
     end%properties
-
+    
     properties (Dependent = true)
         codenumoflines;
     end
-
+    
     methods
         function obj = CodeGenerator
+            
             obj.currentline=1;
             obj.stack=Stack;
             obj.code=int16(zeros(999,4));
         end
-
+        
         function GenSeq(obj,arrayofpulses,varargin)
             % This method generate the code of pulse sequence with all
             % the pulse parameter setting but WITHOUT LOGIC
@@ -62,7 +63,7 @@ classdef CodeGenerator < handle
             %if we don't lasteventtime simply gets set to 0.
             if (size(varargin,2)==1)
                 
-                lasteventtime=-varargin{1}; 
+                lasteventtime=-varargin{1};
             else
                 lasteventtime=0;
             end
@@ -86,13 +87,17 @@ classdef CodeGenerator < handle
                                 %pass the OnIs param to this cpu command,
                                 %thus turning the dig channel on. the last
                                 %param is 0 because this command does not
-                                %take further arguments. 
+                                %take further arguments.
                                 obj.code(obj.currentline,:)=...
                                     [ 2 , PulseChannelInfo(channel,'DigitalSwitch'),PulseChannelInfo(channel,'OnIs'), 0];
                                 obj.currentline=obj.currentline+1;
                             case {'PMT'}
                                 % reset PMT counters  command=3 subcommand = 3
                                 obj.code(obj.currentline,:)=[ 3 , 3 , 0 , 0];
+                                obj.currentline=obj.currentline+1;
+                            case 'Analog'
+                                % switch on analog channel
+                                obj.code(obj.currentline,:)=[1,PulseChannelInfo(channel,'AnalogSwitch'),parameter,0];
                                 obj.currentline=obj.currentline+1;
                             otherwise
                                 error(' No Switch ON for this ChannelType');
@@ -114,11 +119,15 @@ classdef CodeGenerator < handle
                                 obj.code(obj.currentline+2,:) = [ 7 , 1 , 0 , 0];
                                 obj.currentline=obj.currentline+3;
                                 obj.numofreadout=obj.numofreadout+1; %what is this variable?
-
+                                case 'Analog'
+                                % switch off analog channel
+                                obj.code(obj.currentline,:)=[1,PulseChannelInfo(channel,'AnalogSwitch'),parameter,0];
+                                obj.currentline=obj.currentline+1;
+                                
                             otherwise
                                 error(' No Switch OFF for this ChannelType'); %this used to say switch ON. i think it was wrong. 19/10/15
                         end
-
+                        
                     case 3 % -------------- set frequency ---------------------
                         switch channeltype
                             case 'VCO'
@@ -127,9 +136,9 @@ classdef CodeGenerator < handle
                                 % command is set to 1 that handel analog out
                                 % get the real value that represent the freq
                                 
-                                %GAL: the comment above is gibrish. WTF
-
-                                %freq=parameter;
+                                
+                                
+                                freq=parameter;
                                 voltage=eval(PulseChannelInfo(channel,'Freq2Value')); %IF YOU ARE USING EVAL YOU ARE DOING IT WRONG
                                 obj.code(obj.currentline,:)=...
                                     [ 1 , PulseChannelInfo(channel,'SetFreqAddress') , voltage , 0];
@@ -139,8 +148,8 @@ classdef CodeGenerator < handle
                         end
                     case 4 %---------------- set phase ------------------------
                         switch channeltype
-                             % NO implementation 
-                             otherwise
+                            % NO implementation
+                            otherwise
                                 error(' invalid Channel type for set phase ');
                         end
                     case 5 % ---------------- set amplitude ----------------------
@@ -152,23 +161,27 @@ classdef CodeGenerator < handle
                             otherwise
                                 error(' invalid Channel type for set amplitude');
                         end
-
+                        
                     otherwise %-------- any other operation -------------------
+                        
                 end %switch
-
+                
             end %for loop
         end % SegGen
         
         function GenSetAO(obj,ChStr,Var)
-%             this function generates analog output commands in the code
-%             matrix. only analog output chnnels that are implemented in
-%             hardware can be cases in the ChStr switch block. 
+            %             this function generates analog output commands in the code
+            %             matrix. only analog output chnnels that are implemented in
+            %             hardware can be cases in the ChStr switch block.
             switch ChStr
-                case 'AO0' 
+                case 'AO0'
                     obj.code(obj.currentline,:)=[1 0 Var 0];
                     obj.currentline=obj.currentline+1;
                 case 'AO1'
                     obj.code(obj.currentline,:)=[1 1 Var 0];
+                    obj.currentline=obj.currentline+1;
+                case 'AO3'
+                    obj.code(obj.currentline,:)=[1 3 Var 0];
                     obj.currentline=obj.currentline+1;
                 otherwise
                     disp('Unknown method');
@@ -176,7 +189,7 @@ classdef CodeGenerator < handle
         end
         
         function GenRegOp(obj,cmdStr,cmdVar1,cmdVar2)
-%             this function is
+            %             this function is
             if ~exist('cmdVar1')
                 cmdVar1=0;
             end
@@ -193,9 +206,9 @@ classdef CodeGenerator < handle
                 case {'RegC='} %RegC=cmdVar(1): command 4 subc 2, par1=cmdVar(1)
                     obj.code(obj.currentline,:)=[4 2 cmdVar1 0];
                     obj.currentline=obj.currentline+1;
-                case {'RegD='} %RegD=cmdVar(1): command 4 subc 11, par1=cmdVar(1)
-                    obj.code(obj.currentline,:)=[4 11 cmdVar1 0];
-                    obj.currentline=obj.currentline+1;
+                    %                 case {'RegD='} %RegD=cmdVar(1): command 4 subc 11, par1=cmdVar(1)
+                    %                     obj.code(obj.currentline,:)=[4 11 cmdVar1 0];
+                    %                     obj.currentline=obj.currentline+1;
                 case {'RegA=+1'} %RegC=RegC+1: command 4 subc 4
                     obj.code(obj.currentline,:)=[4 4 0 0];
                     obj.currentline=obj.currentline+1;
@@ -220,41 +233,41 @@ classdef CodeGenerator < handle
                 case {'FIFO<-AI1'} %command 7, subc 4, no pars
                     obj.code(obj.currentline,:)=[7 4 0 0];
                     obj.currentline=obj.currentline+1;
-                case {'RegD=RegD*par2*2^par1'} %command 4, subc 10,2 pars 
+                case {'RegD=RegD*par2*2^par1'} %command 4, subc 10,2 pars
                     obj.code(obj.currentline,:)=[4 10 cmdVar1 cmdVar2];
                     obj.currentline=obj.currentline+1;
-                   
+                    
                 otherwise
                     disp('Unknown method.')
             end
         end
         
         function GenPause(obj,c)
-         % c is in microseconds 
-         % Employes command 4,7 of the pigeon
+            % c is in microseconds
+            % Employes command 4,7 of the pigeon
             if c>60e6
                 fprintf('warning GenPuase was wait time of > minute\n in code line %d\n',c*1e-6,obj.currentline);
                 dbstop;
-                return;            
+                return;
             elseif c>10e6
-                    fprintf('warning GenPuase was wait time of %.3f [s]\n',c*1e-6);
+                fprintf('warning GenPuase was wait time of %.3f [s]\n',c*1e-6);
             end
-            c=c*40; % translate to clock cycle           
-            if (c>=1)                               
+            c=c*40; % translate to clock cycle
+            if (c>=1)
                 c=typecast(int32(c-1),'int16');
                 obj.code(obj.currentline,:)=[4,7,c(1),c(2)];
                 obj.currentline=obj.currentline+1;
             end
-                 
+            
         end
         
         function GenPauseMemoryBlock(obj)
-             %command 4, subc 11, no pars
-             % generate puase with sleep counter = memoryBlock[RegC]
+            %command 4, subc 11, no pars
+            % generate puase with sleep counter = memoryBlock[RegC]
             obj.code(obj.currentline,:)=[4 11 0 0];
-            obj.currentline=obj.currentline+1;      
+            obj.currentline=obj.currentline+1;
         end
-
+        
         function GenWaitExtTrigger(obj)
             obj.code(obj.currentline,:)=[4,7,40*5,0];
             % generate if statement is external trigger rising edge
@@ -265,35 +278,35 @@ classdef CodeGenerator < handle
             obj.code(obj.currentline+3,:)=[0,0,0,0];
             obj.currentline=obj.currentline+4;
         end
-
+        
         function GenRepeatSeq(obj,arrayofpulses,c)
             % set RegC to 0 : command=4,subcomand=2
             obj.code(obj.currentline,:)=[4,2,0,0];
             obj.currentline=obj.currentline+1;
-
+            
             % save currentline to startline
             startline=obj.currentline;
-
+            
             % increace RegC by 1 :command=4,subcomand=3
             obj.code(obj.currentline,:)=[4,3,0,0];
             obj.currentline=obj.currentline+1;
-
+            
             % generate the pulses code !without logic!
             obj.GenSeq(arrayofpulses);
-
+            
             % generate if statement RegC=c :command=5, subcommand=2,par1=c
             obj.code(obj.currentline,:)=[5,2,c,0];
             obj.currentline=obj.currentline+1;
-
+            
             % generate conditional goto startline/currentline+1
             % command=6, subcommand = Na ,true:par1=currentline+2 false:par2=startline
             obj.code(obj.currentline,:)=[6,0,obj.currentline+2,startline];
             % generate empty line due to goto
             obj.code(obj.currentline+1,:)=[0,0,0,0];
             obj.currentline=obj.currentline+2;
-
+            
         end
-
+        
         function GenFor(obj,N)
             %generate the start of a for loop, based on regC, iterated N
             %times. regC will run from 0,..,N-1
@@ -335,19 +348,19 @@ classdef CodeGenerator < handle
         function GenRepeatEnd(obj,expression,c)
             % the end statement matching the GenFor
             startline=obj.stack.Pop;
-            % generate if statement 
+            % generate if statement
             switch expression
                 case 'RegB>0'
-                   obj.code(obj.currentline,:)=[5,1,0,0];
+                    obj.code(obj.currentline,:)=[5,1,0,0];
                 case 'RegA>'
-                   obj.code(obj.currentline,:)=[5,5,c,0];
+                    obj.code(obj.currentline,:)=[5,5,c,0];
                 case 'RegC>'
-                   obj.code(obj.currentline,:)=[5,2,c,0];
+                    obj.code(obj.currentline,:)=[5,2,c,0];
                 otherwise
-                   error('Unknown method.');
+                    error('Unknown method.');
             end
             obj.currentline=obj.currentline+1;
-            % generate conditional goto 
+            % generate conditional goto
             % command=6, subcommand = Na ,true:par1=currentline+2 false:par2=startline
             obj.code(obj.currentline,:)=[6,0,obj.currentline+2,startline];
             % generate empty line due to goto
@@ -371,7 +384,7 @@ classdef CodeGenerator < handle
                     % generate if statement RegB=>c :command=5, subcommand=5,par1=c
                     obj.code(obj.currentline,:)=[5,1,c,0];
                 case 'RegC='
-                   % generate if statement RegC=>c :command=5, subcommand=5,par1=c
+                    % generate if statement RegC=>c :command=5, subcommand=5,par1=c
                     obj.code(obj.currentline,:)=[5,2,c,0];
                     
                 otherwise
@@ -386,7 +399,7 @@ classdef CodeGenerator < handle
             obj.code(obj.currentline+2,:)=[0,0,0,0]; % null line for goto implemntation
             obj.currentline=obj.currentline+3;
         end
-
+        
         function GenElseDo(obj)
             % End the GenIfDo=true part
             % generarte a goto command=6, subcommand = Na par1=par2 will be
@@ -399,14 +412,14 @@ classdef CodeGenerator < handle
             obj.stack.Push(obj.currentline);
             obj.currentline=obj.currentline+2;
         end
-
+        
         function GenElseEnd(obj)
             % update the GenElseDo
             elseLine = obj.stack.Pop;
             obj.code(elseLine,3)=obj.currentline;
             obj.code(elseLine,4)=obj.currentline;
         end
-
+        
         function GenFinish(obj)
             % End and reset program. command=8 ...
             obj.code(obj.currentline,:)=[8,0,0,0];
@@ -414,7 +427,7 @@ classdef CodeGenerator < handle
             obj.currentline=obj.currentline+2;
             obj.code(obj.currentline:end,:)=[];
         end
-    
+        
         function DisplayCode(obj)
             numofline=size(obj.code,1);
             disp('line  command         subcommand              par1       par2');
@@ -425,17 +438,17 @@ classdef CodeGenerator < handle
                     s_subcommand=char(obj.SubcommandList(obj.code(i,1)+1,obj.code(i,2)+1));
                 else
                     s_subcommand=['Sub' num2str(obj.code(i,2))];
-                end    
+                end
                 s_par1=obj.code(i,3);
                 s_par2=obj.code(i,4);
                 disp(sprintf('%5d %-15s %-15s %10d %10d',i,s_command,s_subcommand,s_par1,s_par2));
             end
         end;
-
+        
         function value = get.codenumoflines(obj)
             value = obj.currentline-1;
         end
-
+        
     end % methods
-
+    
 end %class

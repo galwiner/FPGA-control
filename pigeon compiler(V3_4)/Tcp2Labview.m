@@ -65,7 +65,7 @@ classdef Tcp2Labview <handle
             blocksize=codeobj.codenumoflines*3;
             fwrite(obj.TcpID,int16([100 blocksize]),'int16');
             % make the code array to 1D array
-            newcode=codeobj.code(:,2:4);
+            newcode=codeobj.code(:,2:4); %only take 3 of the cols from the original code matrix
             % combine commnad and subcommand to single int16
             newcode(:,1)=typecast(int8(reshape(codeobj.code(:,1:2)',...
                                     1,codeobj.codenumoflines*2)),'int16');
