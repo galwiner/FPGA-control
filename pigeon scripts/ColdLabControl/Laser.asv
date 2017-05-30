@@ -29,6 +29,31 @@ classdef Laser
                     error('wrong value at tempLockControl. bool must be On/Off');
             end
         end
+        
+        function laserLockStat = laserLockCheck(obj)
+           %This function checks the quality of the laser lock.
+           %The function takes the RMS of the laser error signal, over N=15 measurments with dt = 100ms difference.
+           %If the error is above the threshhold of 0.1?(Make sure this is true!!) then is it rejected.  
+           N = 15; %Number of samples
+           dt = 0.1; %pause time
+           T = dt*N; %total time of measurment
+           error = zeros(1,N);
+           fprintf('Calculating RMS. Wait for %f seconds', T);
+           for n = 1:N
+               tmp = obj.getOutput(2); %2 is the output channel for laser error. The retturned value is a char array. We want chars 3 to end.
+               tmp = str2num(tmp(3:end));
+               error(1,n) = tmp;
+               pause(dt);
+           end
+           rmsError = rms(error);
+           if rmsError > 0.1
+              disp(rmsError)
+              laserLockStat=0; 
+           else
+              disp(rmsError)
+              laserLockStat=1;  
+           end
+        end
 %%  temp control board function
 
         function success=comTest(obj)
@@ -253,7 +278,7 @@ classdef Laser
         
         fopen(obj.s);
         fprintf(obj.s,['#Slave ' obj.slot]);
-        fprintf(obj.s,['Invert ', bool]);
+        fprintf(obj.s,['Invert ' bool]);
         invertStat = fscanf(obj.s);
         fclose(obj.s);
  end
@@ -270,14 +295,15 @@ classdef Laser
         bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
         fopen(obj.s);
         fprintf(obj.s,['#Slave ' obj.slot]);
-        fprintf(obj.s,['IntRef ', bool]);
+        fprintf(obj.s,['IntRef ' bool]);
         intRefStat = fscanf(obj.s);
         fclose(obj.s);
  end
  
   function intFreq=getIntFreq(obj)
         %This function returns the inturnal vco frequency in MHz. Remember
-        %that the actual 
+        %that the actual signal in the PLL is multiplied by the multiplier.
+        
         fopen(obj.s);
         fprintf(obj.s,['#Slave ' obj.slot]);
         fprintf(obj.s,'IntFreq?');
@@ -285,14 +311,56 @@ classdef Laser
         fclose(obj.s);
  end
  
- function intRefStat=setIntRefBool(obj, bool)
-        bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
+ function intRefStat=setIntFreq(obj, freq)
+        %This function sets the inturnal vco frequency in MHz. Remember
+        %that the actual signal in the PLL is multiplied by the multiplier.
         fopen(obj.s);
         fprintf(obj.s,['#Slave ' obj.slot]);
-        fprintf(obj.s,['IntRef ', bool]);
+        fprintf(obj.s,['IntFreq ' num2str(freq)]);
         intRefStat = fscanf(obj.s);
         fclose(obj.s);
  end
+ 
+   function laserServo=getLaserServoStat(obj)     
+        fopen(obj.s);
+        fprintf(obj.s,['#Slave ' obj.slot]);
+        fprintf(obj.s,'Servo?');
+        laserServo = fscanf(obj.s);
+        fclose(obj.s);
+   end
+   
+  function laserServo=setLaserServoStat(obj, bool)  
+    bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
+    
+    fopen(obj.s);
+    fprintf(obj.s,['#Slave ' obj.slot]);
+    fprintf(obj.s,['Servo ' bool]);
+    laserServo = fscanf(obj.s);
+    if obj.laserLockCheck == 0 && strcmp(bool,'On')
+        fprintf(obj.s,['Servo ' 'Off']);
+        fclose(obj.s);
+        error('Lock failed!')
+    end
+    fclose(obj.s);
+  end
+  
+ function val=getOutput(obj,outputChan)
+     %This function returnes the value of the output channel with respect to the following table:
+        % 1 - Servo Out
+        % 2 - Error Signal
+        % 3 - NA
+        % 4 - NA
+        % 5 - Laser Current (1V = 1A)
+        % 6 - +2.5V Ref
+        % 7 - NA
+        % 8 - Ground
+        
+        fopen(obj.s);
+        fprintf(obj.s,['#Slave ' obj.slot]);
+        fprintf(obj.s,['ReadVolt ' num2str(outputChan)]);
+        val = fscanf(obj.s);
+        fclose(obj.s);
+   end
         
     end
     

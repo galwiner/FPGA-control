@@ -183,6 +183,9 @@ classdef CodeGenerator < handle
                 case 'AO3'
                     obj.code(obj.currentline,:)=[1 3 Var 0];
                     obj.currentline=obj.currentline+1;
+                    case 'AO4'
+                    obj.code(obj.currentline,:)=[1 4 Var 0];
+                    obj.currentline=obj.currentline+1;
                 otherwise
                     disp('Unknown method');
             end

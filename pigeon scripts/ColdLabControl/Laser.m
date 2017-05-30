@@ -26,8 +26,33 @@ classdef Laser
             elseif strcmp(bool, 'off') || strcmp(bool,'Off')
                 boolReturn = 'Off';
             else
-                    error('wrong value at tempLockControl. bool must be On/Off');
+                    error('wrong value for bool. must be On/Off');
             end
+        end
+        
+        function laserLockStat = getFreqLockStat(obj)
+           %This function checks the quality of the laser lock.
+           %The function takes the RMS of the laser error signal, over N=15 measurments with dt = 100ms difference.
+           %If the error is above the threshhold of 0.1?(Make sure this is true!!) then is it rejected.  
+           N = 15; %Number of samples
+           dt = 0.1; %pause time
+           T = dt*N; %total time of measurment
+           error = zeros(1,N);
+           fprintf('Calculating RMS. Wait for %f seconds', T);
+           for n = 1:N
+               tmp = obj.getOutput(2); %2 is the output channel for laser error. The returned value is a char array. We want chars 3 to end.
+               tmp = str2num(tmp(3:end));
+               error(1,n) = tmp;
+               pause(dt);
+           end
+           rmsError = rms(error);
+           if rmsError > 0.1
+              disp(rmsError)
+              laserLockStat=0; 
+           else
+              disp(rmsError)
+              laserLockStat=1;  
+           end
         end
 %%  temp control board function
 
@@ -44,7 +69,7 @@ classdef Laser
             fclose(obj.s);
         end
         
-        function stat=tempLockServoStat(obj)
+        function stat=getTempLockServoStat(obj)
 %             this function checks if we are servoing temp
         fopen(obj.s);
         fprintf(obj.s,'#Slave 1'); %switch control to the quad temp board (on slot 1)
@@ -54,11 +79,11 @@ classdef Laser
         
         end
         
-        function stat=tempLockStat(obj)
+        function stat=getTempLockStat(obj)
 %             this function checks if our error signal on temp is tight
 %             enough to turn on a laser. and also checks servoing. 
         % Check if temp servo is on
-        if obj.tempLockServoStat == 0
+        if obj.getTempLockServoStat == 0
             disp('Temp Servo is not engaged');
             stat = 0;
             return
@@ -73,7 +98,7 @@ classdef Laser
         stat = 1;
         end
 
-        function stat=tempSet(obj,setTemp)
+        function stat=setTemp(obj,setTemp)
         fopen(obj.s);
         fprintf(obj.s,'#Slave 1');
         fprintf(obj.s,['TempSet ' obj.coolingChan ' ' num2str(setTemp)]);
@@ -81,7 +106,7 @@ classdef Laser
         fclose(obj.s);
         end
         
-        function stat=tempLockControl(obj,bool)
+        function stat=setTempLock(obj,bool)
 %          enable/disable the temp lock loop on channel chan. (bool 'On'/'Off')
         bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
             
@@ -171,7 +196,7 @@ classdef Laser
         function stat=setLaserStat(obj,bool)
        %This function turnes on\off the laser. Before it does this it checks
        %if the temp of the laser is stabliezd.
-        if obj.tempLockStat == 0
+        if obj.getTempLockStat == 0
             error('Temp unlocked. cannot turn on laser.');
         end
         
@@ -193,7 +218,7 @@ classdef Laser
         fclose(obj.s);
         end 
         
-        function stat=setCurrSet(obj,Current)
+        function stat=setCurr(obj,Current)
         fopen(obj.s);
         fprintf(obj.s,['#Slave ' obj.slot]);
         fprintf(obj.s,['CurrSet ' num2str(Current)]);
@@ -247,7 +272,7 @@ classdef Laser
         fclose(obj.s);
  end
  
- function invertStat=setInvertBool(obj, bool)
+ function invertStat=setInvert(obj, bool)
      
         bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
         
@@ -258,7 +283,7 @@ classdef Laser
         fclose(obj.s);
  end
  
- function intRefStat=getIntRefBool(obj)
+ function intRefStat=getIntRef(obj)
         fopen(obj.s);
         fprintf(obj.s,['#Slave ' obj.slot]);
         fprintf(obj.s,'IntRef?');
@@ -266,7 +291,7 @@ classdef Laser
         fclose(obj.s);
  end
  
- function intRefStat=setIntRefBool(obj, bool)
+ function intRefStat=setIntRef(obj, bool)
         bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
         fopen(obj.s);
         fprintf(obj.s,['#Slave ' obj.slot]);
@@ -295,6 +320,51 @@ classdef Laser
         intRefStat = fscanf(obj.s);
         fclose(obj.s);
  end
+ 
+   function laserServo=getLaserServoStat(obj)     
+        fopen(obj.s);
+        fprintf(obj.s,['#Slave ' obj.slot]);
+        fprintf(obj.s,'Servo?');
+        laserServo = fscanf(obj.s);
+        fclose(obj.s);
+   end
+   
+  function laserServo=setLaserServoStat(obj, bool)  
+    bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
+    
+    fopen(obj.s);
+    fprintf(obj.s,['#Slave ' obj.slot]);
+    fprintf(obj.s,['Servo ' bool]);
+    laserServo = fscanf(obj.s);
+    if obj.getFreqLockStat == 0 && strcmp(bool,'On')
+        fprintf(obj.s,['Servo ' 'Off']);
+        if strcmpi(obj.s.Status,'closed')
+            fopen(obj.s);
+        end
+        
+        error('Lock failed!')
+    end
+    fclose(obj.s);
+  end
+  
+ function val=getOutput(obj,outputChan)
+     %This function returnes the value of the output channel with respect to the following table:
+        % 1 - Servo Out
+        % 2 - Error Signal
+        % 3 - NA
+        % 4 - NA
+        % 5 - Laser Current (1V = 1A)
+        % 6 - +2.5V Ref
+        % 7 - NA
+        % 8 - Ground
+        if strcmpi(obj.s.Status,'closed')
+            fopen(obj.s);
+        end
+        fprintf(obj.s,['#Slave ' obj.slot]);
+        fprintf(obj.s,['ReadVolt ' num2str(outputChan)]);
+        val = fscanf(obj.s);
+        fclose(obj.s);
+   end
         
     end
     
