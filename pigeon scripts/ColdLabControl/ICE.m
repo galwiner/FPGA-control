@@ -1,4 +1,4 @@
-classdef ICE
+classdef ICE <handle
     %this class represent the ICE laser control system
    
     
@@ -16,8 +16,8 @@ classdef ICE
 
         end
         
-        function addLaser(obj,laserObject)
-            obj.lasers{end+1}=ICELASER;
+        function addLaser(obj,slot,coolingChan)
+            obj.lasers{end+1}=ICELaser(obj.s,slot,coolingChan);
         end
         
         

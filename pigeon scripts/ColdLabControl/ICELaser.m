@@ -23,6 +23,8 @@ classdef ICELaser
             catch err
                 if strcmpi(err.identifier,'MATLAB:serial:fopen:opfailed');
                     warning('Connection already open');
+                    fclose(instrfind);
+                    fopen(obj.s);
                 else
                     warning(['Problem opening serial connection:' err.identifier]);
                 end
