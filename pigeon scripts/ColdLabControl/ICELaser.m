@@ -61,7 +61,9 @@ classdef ICELaser
                 try
                     fopen(obj.s);
                 catch err
-                    error(['Cannot communicate with laser:' err.identifier]);
+%                     warning(['Cannot communicate with laser:' err.identifier]);
+                    fclose(instrfind);
+                    fopen(obj.s);
                 end
             else
                 command=strjoin(varargin,' ');
@@ -221,14 +223,25 @@ classdef ICELaser
         function stat=setLaserStat(obj,bool)
             %This function turnes on\off the laser. Before it does this it checks
             %if the temp of the laser is stabliezd.
-            if obj.getTempLockStat == 0
-                error('Temp unlocked. cannot turn on laser.');
+       
+            bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
+            
+            obj.sendSerialCommand(['#Slave ' obj.slot]);
+            if strcmpi(bool,'off')
+                stat=obj.sendSerialCommand(['Laser ' bool]);
+            else
+                if obj.getTempLockStat == 0
+                    error('Temp unlocked. cannot turn on laser.');
+                else
+                    stat=obj.sendSerialCommand(['Laser ' bool]);
+                end
+                
             end
             
-            bool = obj.boolChck(bool); %Check that bool is 'on' or 'off'
-       
-            obj.sendSerialCommand(['#Slave ' obj.slot]);
-            stat=obj.sendSerialCommand(['Laser ' bool]);
+            
+            
+            
+            
         end
         
         function stat=getCurrSet(obj)
