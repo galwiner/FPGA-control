@@ -29,9 +29,9 @@ fprintf(t1,'system:remote:cc:status slot4')
 fprintf(t1,'system:remote:cc:status?')
 fscanf(t1)
 
-% set limits to maximum 
+% set limits to maximum. Current is limited to 120 untile we gwt a new IGBT
 fprintf(t1,'system:limits:voltage 18,ON')
-fprintf(t1,'system:limits:current 220,ON')
+fprintf(t1,'system:limits:current 120,ON')
 
 %check to see if the limits were set
 fprintf(t1,'system:limits:voltage?')
@@ -45,7 +45,6 @@ fprintf(t1,'output on')
 fclose(t1)
 
 % do the same for the rectangular coils
-
 t2=tcpip('10.10.10.103',8462);
 fopen(t2)
 %clear error queue

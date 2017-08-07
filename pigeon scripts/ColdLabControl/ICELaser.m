@@ -1,4 +1,4 @@
-classdef ICELaser
+classdef ICELaser < handle
     %this class represent a laser module in the ICE box.
     
     
@@ -21,7 +21,7 @@ classdef ICELaser
             try
                 fopen(obj.s); %open the serial connection
             catch err
-                if strcmpi(err.identifier,'MATLAB:serial:fopen:opfailed');
+                if strcmpi(err.identifier,'MATLAB:serial:fopen:opfailed')
                     warning('Connection already open');
                     fclose(instrfind);
                     fopen(obj.s);
@@ -70,6 +70,7 @@ classdef ICELaser
                 command = [command char(13)];
                 fprintf(obj.s,command);
                 resp=fscanf(obj.s);
+                resp=resp(1:end-1);
             end
         end
         
@@ -233,6 +234,7 @@ classdef ICELaser
                 if obj.getTempLockStat == 0
                     error('Temp unlocked. cannot turn on laser.');
                 else
+                    obj.sendSerialCommand(['#Slave ' obj.slot]);
                     stat=obj.sendSerialCommand(['Laser ' bool]);
                 end
                 
